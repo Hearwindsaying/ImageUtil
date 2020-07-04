@@ -17,6 +17,20 @@ namespace ImageUtil
         return 0.212671f * r + 0.715160f * g + 0.072169f * b;
     }
 
+    template<typename T>
+    std::vector<T> diffVector(const std::vector<T>& v1, const std::vector<T>& v2)
+    {
+        assert(v1.size() == v2.size());
+        
+        std::vector<T> res;
+        res.reserve(v1.size());
+        for (int i = 0; i < v1.size(); ++i)
+        {
+            res.push_back(std::abs(v1[i] - v2[i]));
+        }
+        return res;
+    }
+
     /**
      * @brief Utility class for loading image and compute RMSE.
      */
@@ -26,18 +40,33 @@ namespace ImageUtil
         /**
          * @brief Compute RMSE and output directly.
          */
-        static void computeRMSE(const std::string & data1, const std::string & data2, const std::string & ref)
+        static void computeRMSE(const std::string & data1, const std::string & data2, const std::string & ref, bool diffImage = false)
         {
-            auto image1 = loadImageToLuminance(data1);
-            auto image2 = loadImageToLuminance(data2);
-            auto imageRef = loadImageToLuminance(ref);
+            int width, height;
+            auto image1 = loadImageToLuminance(data1, &width, &height);
+            auto image2 = loadImageToLuminance(data2, &width, &height);
+            auto imageRef = loadImageToLuminance(ref, &width, &height);
             assert(!image1.empty() || !image2.empty() || !imageRef.empty());
 
             double rmse1 = rmse(image1, imageRef);
             double rmse2 = rmse(image2, imageRef);
 
             std::cout.precision(std::numeric_limits<double>::max_digits10);
-            std::cout << "Image1 RMSE: " << rmse1 << "Image2 RMSE: " << rmse2 << std::endl;
+            std::cout << "Image1 RMSE: " << rmse1 << std::endl << "Image2 RMSE: " << rmse2 << std::endl;
+
+            if (diffImage)
+            {
+                auto max1 = maxDiff(image1, imageRef);
+                auto max2 = maxDiff(image2, imageRef);
+                std::cout << "Image1 maxDiff at: " << max1.first << " value: " << max1.second << std::endl
+                          << "Image2 maxDiff at: " << max2.first << " value: " << max2.second << std::endl;
+
+                /* Diff image. */
+                auto diff1 = diffVector(image1, imageRef);
+                auto diff2 = diffVector(image2, imageRef);
+                saveLuminanceImage(diff1, width, height, "diff1.exr");
+                saveLuminanceImage(diff2, width, height, "diff2.exr");
+            }
         }
 
         /**
@@ -45,14 +74,32 @@ namespace ImageUtil
          */
         static double computeRMSE(const std::string & filename1, const std::string & filename2)
         {
-            auto image1 = loadImageToLuminance(filename1);
-            auto image2 = loadImageToLuminance(filename2);
+            int width, height;
+            auto image1 = loadImageToLuminance(filename1, &width, &height);
+            auto image2 = loadImageToLuminance(filename2, &width, &height);
             assert(!image1.empty() || !image2.empty());
         
             return rmse(image1, image2);
         }
 
     private:
+        static std::pair<int,double> maxDiff(const std::vector<double> &data1, const std::vector<double> &data2)
+        {
+            /* index, value */
+            std::pair<int, double> res = std::make_pair(0, std::abs(data1[0] - data2[0]));
+            
+            for (int i = 0; i < data1.size(); ++i)
+            {
+                if (std::abs(data1[i] - data2[i]) > res.second)
+                {
+                    res.second = std::abs(data1[i] - data2[i]);
+                    res.first = i;
+                }
+                    
+            }
+            return res;
+        }
+
         static double rmse(const std::vector<double> &data1, const std::vector<double> &data2)
         {
             double rmse = 0.0;
@@ -67,9 +114,11 @@ namespace ImageUtil
 
         /**
          * @brief Load 32bpc HDR/OpenEXR image and convert RGB channels to luminance.
+         * @param[out] width 
+         * @param[out] height
          * @return Empty vector if fails.
          */
-        static std::vector<double> loadImageToLuminance(const std::string & filename)
+        static std::vector<double> loadImageToLuminance(const std::string & filename, int *width, int *height)
         {
             /* Load image using FreeImage. */
 
@@ -105,6 +154,8 @@ namespace ImageUtil
             int bitsPerPixel = FreeImage_GetBPP(bitmap);
             int imageWidth = FreeImage_GetWidth(bitmap);
             int imageHeight = FreeImage_GetHeight(bitmap);
+            *width = imageWidth;
+            *height = imageHeight;
 
             FREE_IMAGE_TYPE imageType = FreeImage_GetImageType(bitmap);
             int bytespp = FreeImage_GetLine(bitmap) / imageWidth / sizeof(float);
@@ -172,6 +223,41 @@ namespace ImageUtil
             FreeImage_Unload(bitmap);
 
             return luminanceBuffer;
+        }
+
+        /**
+         * @brief Save luminance (R=G=B) buffer to OpenEXR image.
+         */
+        static void saveLuminanceImage(const std::vector<double> &buffer, int width, int height, const std::string & filename)
+        {
+            FIBITMAP* bitmap = FreeImage_AllocateT(FIT_RGBAF, width, height);
+
+            int bitsPerPixel = FreeImage_GetBPP(bitmap);
+            FREE_IMAGE_TYPE imageType = FreeImage_GetImageType(bitmap);
+            int bytespp = FreeImage_GetLine(bitmap) / width / sizeof(float);
+
+            for (auto y = 0; y < height; ++y)
+            {
+                //Note the scanline fetched by FreeImage is upside down--the first scanline corresponds to the buttom of the image!
+                FLOAT *bits = reinterpret_cast<FLOAT *>(FreeImage_GetScanLine(bitmap, height - y - 1));
+
+                for (auto x = 0; x < width; ++x)
+                {
+                    unsigned int buf_index = (width * y + x) * 1;
+
+                    //32bit image texture is linear.
+                    bits[0] = buffer[buf_index];
+                    bits[1] = buffer[buf_index];
+                    bits[2] = buffer[buf_index];
+                    bits[3] = 1.f;
+                    // jump to next pixel
+                    bits += bytespp;
+                }
+            }
+
+            FreeImage_Save(FIF_EXR, bitmap, filename.c_str());
+            // Unload the 32-bit colour bitmap
+            FreeImage_Unload(bitmap);
         }
     };
 }
