@@ -121,6 +121,28 @@ namespace ImageUtil
 
             switch (imageType)
             {
+            case FIT_RGBAF:
+                for (auto y = 0; y < imageHeight; ++y)
+                {
+                    // Note the scanline fetched by FreeImage is upside down--the first scanline corresponds to the buttom of the image!
+                    FLOAT *bits = reinterpret_cast<FLOAT *>(FreeImage_GetScanLine(bitmap, imageHeight - y - 1));
+
+                    for (auto x = 0; x < imageWidth; ++x)
+                    {
+                        unsigned int buf_index = (imageWidth * y + x) * 4;
+
+                        assert(!isinf(static_cast<float>(bits[0])) && !isnan(static_cast<float>(bits[0])));
+                        assert(!isinf(static_cast<float>(bits[1])) && !isnan(static_cast<float>(bits[1])));
+                        assert(!isinf(static_cast<float>(bits[2])) && !isnan(static_cast<float>(bits[2])));
+
+                        // note that for RGBAF/RGBF format, the pixel order is:RGB(A)
+                        luminanceBuffer.push_back(luminance(static_cast<float>(bits[0]), static_cast<float>(bits[1]), static_cast<float>(bits[2])));
+                        // jump to next pixel
+                        bits += bytespp;
+                    }
+                }
+                break;
+
             case FIT_RGBF:
                 for (auto y = 0; y < imageHeight; ++y)
                 {
@@ -141,7 +163,7 @@ namespace ImageUtil
                 }
                 break;
             default:
-                std::cerr << "Type of the image is not RGBF, not supported yet..." << std::endl;
+                std::cerr << "Type of the image is not RGBF/RGBAF, not supported yet..." << std::endl;
                 break;
             }
 
