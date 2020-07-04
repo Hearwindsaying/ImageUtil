@@ -160,16 +160,16 @@ using namespace ImageUtil;
 int main(int argc, char* argv[])
 {
     // Check the number of parameters
-    if (argc < 3) {
+    if (argc < 4) {
         // Tell the user how to run the program
-        std::cerr << "RMSE Usage: " << argv[0] << " image1 image2" << std::endl;
+        std::cerr << "RMSE Sample Usage: " << argv[0] << " image1.exr image2.exr refImage.exr" << std::endl;
         /* "Usage messages" are a conventional way of telling the user
          * how to run a program if they enter the command incorrectly.
          */
         return 1;
     }
     
-    ImageRMSE::computeRMSE(argv[1], argv[2]);
+    ImageRMSE::computeRMSE(argv[1], argv[2], argv[3]);
     
     return 0;
 }
