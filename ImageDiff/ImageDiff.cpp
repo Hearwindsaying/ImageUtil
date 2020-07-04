@@ -154,10 +154,22 @@ namespace ImageUtil
     };
 }
 
+using namespace ImageUtil;
 
 
-
-int main()
+int main(int argc, char* argv[])
 {
-    std::cout << "Hello World!\n"; 
+    // Check the number of parameters
+    if (argc < 3) {
+        // Tell the user how to run the program
+        std::cerr << "RMSE Usage: " << argv[0] << " image1 image2" << std::endl;
+        /* "Usage messages" are a conventional way of telling the user
+         * how to run a program if they enter the command incorrectly.
+         */
+        return 1;
+    }
+    
+    ImageRMSE::computeRMSE(argv[1], argv[2]);
+    
+    return 0;
 }
